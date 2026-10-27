@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>漢字れんしゅう</title>
+<meta name="description" content="中学入試によく出る漢字の読み・書き順・熟語・意味を学べるアプリ">
+<meta name="theme-color" content="#fff8ef">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="漢字れんしゅう">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Klee+One:wght@400;600&family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
@@ -35,7 +44,9 @@ body {
 }
 a { color: var(--accent-2); }
 button { font: inherit; color: inherit; cursor: pointer; }
-.wrap { max-width: 760px; margin: 0 auto; padding: 12px 16px 48px; }
+button, a { touch-action: manipulation; }
+canvas { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.wrap { max-width: 760px; margin: 0 auto; padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 48px max(16px, env(safe-area-inset-left)); }
 header.top {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 0 12px;

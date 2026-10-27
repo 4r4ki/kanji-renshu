@@ -10,7 +10,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const kata2hira = s => s.replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
 const hira2kata = s => s.replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
 const isKanji = c => /[一-鿿々]/.test(c);
-const LV_LABEL = { 1: '基本', 2: '標準', 3: '発展' };
+const LV_LABEL = { 1: '基本', 2: '標準', 3: '発展・難関' };
 
 // ───────── 保存データ ─────────
 const STORE_KEY = 'kanji-renshu-v1';
@@ -37,6 +37,7 @@ for (const e of KANJI) {
       if (!x.ks.includes(e.k)) x.ks.push(e.k);
       if (!x.s && s) x.s = s;
       x.lv = Math.min(x.lv, e.lv);
+      x.dl = Math.max(x.dl, e.lv);
       continue;
     }
     const chars = [...w];
@@ -50,7 +51,7 @@ for (const e of KANJI) {
       read = segs.join('');
     }
     const alt = [...m.matchAll(/「([ぁ-ん]+)」とも読む/g)].map(a => a[1]);
-    const x = { w, chars, segs, read, alt, m, s: s || '', ks: [e.k], lv: e.lv };
+    const x = { w, chars, segs, read, alt, m, s: s || '', ks: [e.k], lv: e.lv, dl: e.lv };
     WORDS.push(x);
     WORD_MAP.set(w, x);
   }
@@ -197,6 +198,7 @@ function writeDistractors(x) {
 const TYPE_LABEL = {
   yomi: '読み', kaki: '書き取り', imi: '意味', kakijun: '書き順・画数',
   yoji: '四字熟語', taigi: '対義語・類義語', douon: '同音異義語・同訓異字',
+  nandoku: '難読・特別な読み', okuri: '送りがな', kousei: '熟語の構成', goji: '誤字訂正',
 };
 function sentenceHTML(s, inner) {
   if (!s) return '';
@@ -327,6 +329,70 @@ const MAKERS = {
     return { prompt, choices, answer, kfont: true, explain, kanji: [...w].filter(c => BY_CHAR.has(c)), label: w };
   },
 };
+Object.assign(MAKERS, {
+  nandoku(id) {
+    const [w, r, m, wrongs] = NANDOKU[+id];
+    const { choices, answer } = mkChoices(r, wrongs);
+    const prompt = `<div class="qtext">特別な読み方をする言葉です。正しい読みをえらぼう。</div><div class="qbig">${esc(w)}</div>`;
+    return { prompt, choices, answer, explain: `<div class="ans">${esc(w)}<span class="muted">（${esc(r)}）</span></div><div class="exp">${esc(m)}</div>${kanjiChips([...w])}`, kanji: [...w].filter(c => BY_CHAR.has(c)), label: w };
+  },
+  okuri(id) {
+    const [r, w, wrongs, s] = OKURI[+id];
+    const { choices, answer } = mkChoices(w, wrongs);
+    const prompt = `<div class="qtext">――線のことばを、漢字と送りがなで正しく書いたものをえらぼう。</div><div class="qsent">${sentenceHTML(s, `<u>${esc(r)}</u>`)}</div>`;
+    return { prompt, choices, answer, kfont: true, explain: `<div class="ans">${esc(w)}<span class="muted">（${esc(r)}）</span></div><div class="exp">${sentenceHTML(s, `<b>${esc(w)}</b>`)}</div>${kanjiChips([...w])}`, kanji: [...w].filter(c => BY_CHAR.has(c)), label: w };
+  },
+  kousei(id) {
+    const [w, t] = KOUSEI[+id];
+    const explain = `<div class="ans">${esc(w)}</div><div class="exp">${esc(KOUSEI_TYPES[t])}</div>${kanjiChips([...w])}`;
+    if (Math.random() < 0.5) {
+      const prompt = `<div class="qtext">この熟語の組み立てをえらぼう。</div><div class="qbig">${esc(w)}</div>`;
+      return { prompt, choices: KOUSEI_TYPES.slice(), answer: t, text: true, explain, kanji: [...w].filter(c => BY_CHAR.has(c)), label: w };
+    }
+    const same = pick(KOUSEI.filter(([v, u]) => u === t && v !== w))[0];
+    const others = shuffle([0, 1, 2, 3, 4].filter(u => u !== t)).slice(0, 3).map(u => pick(KOUSEI.filter(k => k[1] === u))[0]);
+    const { choices, answer } = mkChoices(same, others);
+    const prompt = `<div class="qtext">「${esc(w)}」と同じ組み立ての熟語をえらぼう。</div><div class="qbig">${esc(w)}</div>`;
+    const why = choices.map(c => `<div><span class="k" style="font-size:18px">${esc(c)}</span>　${esc(KOUSEI_TYPES[KOUSEI.find(k => k[0] === c)[1]].replace(/（例：.+）/, ''))}</div>`).join('');
+    return { prompt, choices, answer, kfont: true, explain: explain + `<div class="exp" style="margin-top:6px">${why}</div>`, kanji: [...w].filter(c => BY_CHAR.has(c)), label: `${w}（組み立て）` };
+  },
+  goji(id) {
+    const src = GOJI[+id];
+    const m = src.match(/\{(.):(.)\}/);
+    const [wrong, right] = [m[1], m[2]];
+    const shown = [...src.replace(m[0], wrong)];
+    const pos = src.indexOf(m[0]);
+    const choices = [], idxs = [];
+    let answer = -1;
+    shown.forEach((c, i) => {
+      if (!isKanji(c)) return;
+      if (i === pos) answer = choices.length;
+      idxs.push(i);
+      choices.push(c);
+    });
+    const html = shown.map((c, i) => {
+      const k = idxs.indexOf(i);
+      return k >= 0 ? `<button class="tapc" data-i="${k}">${esc(c)}</button>` : esc(c);
+    }).join('');
+    const [before, after] = src.split(m[0]);
+    const fixed = `${esc(before)}<b style="color:var(--ok)">${esc(right)}</b>${esc(after)}`;
+    return {
+      prompt: `<div class="qtext">この文には、まちがって使われている漢字が<b>一字</b>あります。その漢字をタップしよう。</div>`,
+      tapHTML: html, choices, answer,
+      explain: `<div class="ans"><span style="color:var(--ng)">${esc(wrong)}</span> → <span style="color:var(--ok)">${esc(right)}</span></div><div class="exp">正しい文：${fixed}</div>${kanjiChips([right, wrong])}`,
+      kanji: [right].filter(c => BY_CHAR.has(c)), label: `${wrong}→${right}`, choiceLabel: right,
+    };
+  },
+});
+// 問題の難しさ（1〜3）
+function difficulty(key) {
+  const type = key.slice(0, key.indexOf(':')), id = key.slice(key.indexOf(':') + 1);
+  if (['nandoku', 'okuri', 'goji', 'kousei', 'yoji', 'douon'].includes(type)) return 3;
+  if (type === 'taigi') return 2;
+  if (type === 'kakijun') return (BY_CHAR.get(id) || { lv: 2 }).lv;
+  const x = WORD_MAP.get(id);
+  return x ? x.dl : 2;
+}
 function makeQuestion(key) {
   const [type, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
   const q = MAKERS[type](id);
@@ -347,23 +413,36 @@ function keysFor(type) {
       DOUKUN.forEach(([, l], i) => l.forEach((_, j) => out.push(`douon:k${i}.${j}`)));
       return out;
     }
+    case 'nandoku': return NANDOKU.map((_, i) => `nandoku:${i}`);
+    case 'okuri': return OKURI.map((_, i) => `okuri:${i}`);
+    case 'kousei': return KOUSEI.map((_, i) => `kousei:${i}`);
+    case 'goji': return GOJI.map((_, i) => `goji:${i}`);
   }
   return [];
 }
-// まだ解いていない問題・まちがえた問題を優先して選ぶ
+// まだ解いていない問題・まちがえた問題を優先して選ぶ。
+// 「難関中心」のときは、難しい問題を多めにする
 function choose(keys, n) {
   const score = k => {
     const s = SAVE.stats[k];
     const base = s ? s.c - s.w * 2 + 1 : 0;
     return base + Math.random() * 2.5 + (SAVE.weak[k] ? -3 : 0);
   };
-  return keys.map(k => [k, score(k)]).sort((a, b) => a[1] - b[1]).slice(0, n).map(a => a[0]);
+  const best = (list, m) => list.map(k => [k, score(k)]).sort((a, b) => a[1] - b[1]).slice(0, m).map(a => a[0]);
+  if (level() !== 3) return best(keys, n);
+  // 難関中心：4問のうち3問ほどを難しい問題（★★★）から選ぶ
+  const hardKeys = keys.filter(k => difficulty(k) === 3);
+  const picked = best(hardKeys, Math.ceil(n * 0.75));
+  const rest = best(keys.filter(k => !picked.includes(k)), n - picked.length);
+  return shuffle([...picked, ...rest]);
 }
 function buildKeys(mode) {
   const n = SAVE.settings.count;
   if (mode === 'weak') return shuffle(Object.keys(SAVE.weak)).slice(0, n);
   if (mode === 'mix') {
-    const types = ['yomi', 'kaki', 'kaki', 'yomi', 'imi', 'kakijun', 'yoji', 'taigi', 'douon'];
+    const types = level() === 3
+      ? ['kaki', 'kaki', 'yomi', 'nandoku', 'okuri', 'goji', 'kousei', 'douon', 'yoji', 'kakijun', 'imi', 'taigi']
+      : ['yomi', 'kaki', 'kaki', 'yomi', 'imi', 'kakijun', 'yoji', 'taigi', 'douon', 'okuri', 'kousei'];
     const used = new Set();
     const out = [];
     for (let i = 0; i < n * 4 && out.length < n; i++) {
@@ -499,12 +578,16 @@ const MENU = [
   ['practice', '筆', '#2f7dd1', '書き順れんしゅう', '指やペンでなぞって書き順チェック'],
   ['yomi', '読', '#e58a22', '読みクイズ', '熟語・送りがなの読み'],
   ['kaki', '書', '#2e9d5b', '書き取りクイズ', 'カタカナを漢字に'],
+  ['nandoku', '難', '#7a3e9d', '難読・特別な読み', '境内・建立・名残 など'],
+  ['okuri', '送', '#c2410c', '送りがな', '承る？ 承わる？'],
+  ['goji', '誤', '#b91c1c', '誤字訂正', '文の中のまちがった漢字をさがす'],
+  ['kousei', '構', '#0f766e', '熟語の構成', '増加・損得・読書…どの組み立て？'],
   ['imi', '意', '#8a5cc7', '意味クイズ', '熟語の意味をえらぶ'],
   ['kakijun', '画', '#d6453b', '書き順・画数クイズ', '赤い画は何画目？'],
   ['yoji', '四', '#1d9aa5', '四字熟語', '□をうめる・意味から選ぶ'],
   ['taigi', '対', '#b0752a', '対義語・類義語', '反対・似た意味のことば'],
   ['douon', '同', '#5b6dd1', '同音異義語・同訓異字', '対象・対照・対称 など'],
-  ['mix', '総', '#2d2a26', 'ミックステスト', 'ぜんぶの問題をまぜて出題'],
+  ['mix', '総', '#2d2a26', 'ミックステスト', 'ぜんぶの問題をまぜて出題（難関中心のときは難問多め）'],
 ];
 function renderHome() {
   setBack(false);
@@ -516,7 +599,7 @@ function renderHome() {
   app.innerHTML = `
     <div class="hero">
       <div class="big">漢字<span>れんしゅう</span></div>
-      <p>中学入試によく出る漢字 ${KANJI.length}字・熟語 ${WORDS.length}語・四字熟語 ${YOJI.length}語</p>
+      <p>中学入試によく出る漢字 ${KANJI.length}字・熟語 ${WORDS.length}語・四字熟語 ${YOJI.length}語・難読語 ${NANDOKU.length}語</p>
     </div>
     <div class="stats">
       <div class="stat"><b>${learned}</b><small>学習した漢字</small></div>
@@ -529,10 +612,10 @@ function renderHome() {
     </div>
     <div class="card" style="margin-top:14px">
       <h2>せってい</h2>
-      <div class="setrow"><span>出題レベル</span>${seg('level', [[1, '★ 基本'], [2, '★★ 標準まで'], [3, '★★★ ぜんぶ']])}</div>
+      <div class="setrow"><span>出題レベル</span>${seg('level', [[1, '★ 基本'], [2, '★★ 標準まで'], [3, '★★★ 難関中心']])}</div>
       <div class="setrow"><span>問題数</span>${seg('count', [[5, '5問'], [10, '10問'], [20, '20問']])}</div>
       <div class="setrow"><span>書き取りの答え方</span>${seg('answer', [['choice', 'えらぶ'], ['write', '書いて自己採点']])}</div>
-      <div class="muted">レベルは中学入試での出やすさ・難しさの目安です（基本 ${KANJI.filter(e => e.lv === 1).length}字・標準 ${KANJI.filter(e => e.lv === 2).length}字・発展 ${KANJI.filter(e => e.lv === 3).length}字）。</div>
+      <div class="muted">「難関中心」は全範囲から、難しい問題ほど優先して出します。レベルは中学入試での難しさの目安です（基本 ${KANJI.filter(e => e.lv === 1).length}字・標準 ${KANJI.filter(e => e.lv === 2).length}字・発展 ${KANJI.filter(e => e.lv === 3).length}字）。</div>
       <div style="margin-top:10px"><button class="btn small" id="resetBtn">記録をリセット</button></div>
     </div>`;
   $$('.menu button').forEach(b => b.onclick = () => {
@@ -864,7 +947,7 @@ function startQuiz(mode) {
   go('#/quiz');
 }
 function modeTitle(mode) {
-  if (mode === 'mix') return 'ミックステスト';
+  if (mode === 'mix') return level() === 3 ? 'ミックステスト（難関）' : 'ミックステスト';
   if (mode === 'weak') return 'にがて復習';
   if (mode.startsWith('one:')) return `「${mode.slice(4)}」のクイズ`;
   return TYPE_LABEL[mode] + 'クイズ';
@@ -882,7 +965,7 @@ function renderQuiz() {
     <div class="card">
       <div class="qtype" style="margin-bottom:4px">【${TYPE_LABEL[q.type]}】</div>
       ${q.prompt}
-      ${write ? `<div class="padwrap" id="padwrap"></div>` : `<div class="${cls}" id="choices">${q.choices.map((c, i) => `<button data-i="${i}"><span class="n">${i + 1}</span>${esc(c)}</button>`).join('')}</div>`}
+      ${q.tapHTML ? `<div class="qsent tapsent" id="choices">${q.tapHTML}</div>` : write ? `<div class="padwrap" id="padwrap"></div>` : `<div class="${cls}" id="choices">${q.choices.map((c, i) => `<button data-i="${i}"><span class="n">${i + 1}</span>${esc(c)}</button>`).join('')}</div>`}
       <div id="fb"></div>
     </div>`;
   if (write) setupWritePad(q, done);
@@ -892,7 +975,7 @@ function renderQuiz() {
   }
   const onKey = ev => {
     if (ev.target.tagName === 'INPUT') return;
-    if (/^[1-4]$/.test(ev.key) && !Q.answers[Q.idx] && !write) answer(+ev.key - 1);
+    if (/^[1-5]$/.test(ev.key) && !Q.answers[Q.idx] && !write && !q.tapHTML && +ev.key <= q.choices.length) answer(+ev.key - 1);
     if ((ev.key === 'Enter' || ev.key === ' ') && Q.answers[Q.idx]) { ev.preventDefault(); nextQ(); }
   };
   document.addEventListener('keydown', onKey);
@@ -916,7 +999,7 @@ function showFeedback(ok, i) {
     else if (j === i) b.classList.add('ng');
   });
   const last = Q.idx === Q.qs.length - 1;
-  $('#fb').innerHTML = `<div class="fb"><div class="mark ${ok ? 'ok' : 'ng'}">${ok ? '◎ 正解！' : '× ざんねん'}</div>${ok ? '' : `<div class="muted">正しい答え：<b>${esc(q.choices[q.answer])}</b></div>`}${q.explain}</div>
+  $('#fb').innerHTML = `<div class="fb"><div class="mark ${ok ? 'ok' : 'ng'}">${ok ? '◎ 正解！' : '× ざんねん'}</div>${ok ? '' : `<div class="muted">正しい答え：<b>${esc(q.choiceLabel ? q.label : q.choices[q.answer])}</b></div>`}${q.explain}</div>
     <div class="nextrow"><button class="btn pri" id="nextQ">${last ? '結果を見る' : 'つぎの問題 →'}</button></div>`;
   $('#nextQ').onclick = nextQ;
 }

@@ -179,6 +179,14 @@ span.chip { opacity: .6; }
 .fb .ans { font-family: var(--kfont); font-weight: 600; font-size: 22px; }
 .fb .exp { font-size: 14px; margin-top: 4px; }
 .fb .ksvg { max-width: 160px; }
+.tapsent { line-height: 2.2; }
+.tapsent button.tapc {
+  font: inherit; border: 0; background: var(--soft); border-radius: 8px; padding: 0 3px; margin: 0 1px;
+  box-shadow: 0 2px 0 var(--line);
+}
+.tapsent button.ok { background: #e9f8ef; box-shadow: 0 0 0 2px var(--ok) inset; }
+.tapsent button.ng { background: #fdeceb; box-shadow: 0 0 0 2px var(--ng) inset; }
+.tapsent button[disabled] { cursor: default; color: inherit; }
 .nextrow { display: flex; justify-content: flex-end; margin-top: 12px; gap: 8px; }
 .qsvg { max-width: 220px; }
 

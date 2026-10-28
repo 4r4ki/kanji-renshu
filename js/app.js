@@ -557,7 +557,12 @@ const app = $('#app');
 const state = { quiz: null, player: null, cleanup: null };
 function setBack(show) { $('#backBtn').hidden = !show; $('header.top').hidden = !show; }
 $('#backBtn').onclick = () => { if (history.length > 1) history.back(); else location.hash = '#/'; };
-function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
+// replace=true のときは履歴を増やさない（結果画面から「戻る」でクイズに戻されないように）
+function go(hash, replace = false) {
+  if (location.hash === hash) route();
+  else if (replace) location.replace(hash);
+  else location.hash = hash;
+}
 function route() {
   if (state.cleanup) { state.cleanup(); state.cleanup = null; }
   const h = decodeURIComponent(location.hash.replace(/^#\/?/, ''));
@@ -935,7 +940,7 @@ function renderPractice(c) {
 }
 
 // ───────── クイズ ─────────
-function startQuiz(mode) {
+function startQuiz(mode, replace = false) {
   const keys = buildKeys(mode);
   if (!keys.length) { alert('問題がありません'); return; }
   const qs = [];
@@ -943,7 +948,7 @@ function startQuiz(mode) {
     try { qs.push(makeQuestion(k)); } catch (err) { console.warn('skip', k, err); }
   }
   state.quiz = { mode, qs, idx: 0, answers: [] };
-  go('#/quiz');
+  go('#/quiz', replace);
 }
 function modeTitle(mode) {
   if (mode === 'mix') return `きょうの${SAVE.settings.count}問`;
@@ -955,7 +960,7 @@ function modeTitle(mode) {
 function renderQuiz() {
   setBack(true);
   const Q = state.quiz;
-  if (Q.idx >= Q.qs.length) return go('#/result');
+  if (Q.idx >= Q.qs.length) return go('#/result', true);
   const q = Q.qs[Q.idx];
   const done = Q.answers[Q.idx];
   const write = q.writable && SAVE.settings.answer === 'write';
@@ -1006,7 +1011,7 @@ function showFeedback(ok, i) {
 function nextQ() {
   const Q = state.quiz;
   Q.idx++;
-  if (Q.idx >= Q.qs.length) go('#/result');
+  if (Q.idx >= Q.qs.length) go('#/result', true);
   else renderQuiz();
 }
 // 書いて自己採点
@@ -1089,13 +1094,14 @@ function renderResult() {
     <div class="pbtns">
       ${wrongKeys.length ? '<button class="btn pri" id="retry">まちがえた問題をもう一度</button>' : ''}
       <button class="btn blue" id="again">新しい問題で続ける</button>
-      <a class="btn" style="text-decoration:none" href="#/">ホームへ</a>
+      <a class="btn" style="text-decoration:none" href="#/" id="toHome">ホームへ</a>
     </div>`;
   if ($('#retry')) $('#retry').onclick = () => {
     state.quiz = { mode: Q.mode, qs: wrongKeys.map(makeQuestion), idx: 0, answers: [] };
-    go('#/quiz');
+    go('#/quiz', true);
   };
-  $('#again').onclick = () => startQuiz(Q.mode);
+  $('#again').onclick = () => startQuiz(Q.mode, true);
+  $('#toHome').onclick = ev => { ev.preventDefault(); go('#/', true); };
 }
 
 route();

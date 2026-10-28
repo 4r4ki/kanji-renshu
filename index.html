@@ -51,6 +51,7 @@ header.top {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 0 12px;
 }
+header.top[hidden] { display: none; }
 header.top h1 { font-size: 20px; margin: 0; flex: 1; font-weight: 800; letter-spacing: .02em; }
 header.top h1 a { color: inherit; text-decoration: none; }
 .back {
@@ -69,7 +70,7 @@ h3 { font-size: 15px; margin: 14px 0 6px; font-weight: 800; color: var(--sub); }
 
 /* ホーム */
 .hero { text-align: center; padding: 18px 8px 8px; }
-.hero .big { font-family: var(--kfont); font-size: 44px; font-weight: 600; letter-spacing: .1em; line-height: 1.2; }
+.hero .big { font-family: var(--kfont); font-size: clamp(30px, 10vw, 44px); white-space: nowrap; font-weight: 600; letter-spacing: .1em; line-height: 1.2; }
 .hero .big span { color: var(--accent); }
 .hero p { margin: 6px 0 0; color: var(--sub); font-size: 14px; }
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
@@ -87,6 +88,19 @@ h3 { font-size: 15px; margin: 14px 0 6px; font-weight: 800; color: var(--sub); }
 .menu b { display: block; font-size: 15px; font-weight: 800; }
 .menu small { display: block; color: var(--sub); font-size: 12px; line-height: 1.4; }
 .menu .wide { grid-column: span 2; }
+.startbtn, .weakbtn {
+  display: block; width: 100%; border: 0; text-align: left; border-radius: 18px; padding: 18px 20px; margin: 4px 0 10px; position: relative;
+}
+.startbtn { background: var(--accent); color: #fff; box-shadow: 0 4px 0 #b33e35; }
+.startbtn b { display: block; font-size: 22px; font-weight: 800; }
+.startbtn small { display: block; font-size: 13px; opacity: .9; }
+.weakbtn { background: var(--card); box-shadow: 0 3px 0 var(--line), 0 0 0 2px var(--ng) inset; padding: 12px 20px; }
+.weakbtn b { font-size: 16px; font-weight: 800; color: var(--ng); }
+.weakbtn small { display: block; color: var(--sub); font-size: 12px; }
+.weakbtn .badge { top: 14px; right: 16px; }
+.startbtn:active, .weakbtn:active { transform: translateY(2px); }
+.settings summary { cursor: pointer; font-weight: 800; color: var(--sub); }
+.settings[open] summary { margin-bottom: 8px; }
 .badge { position: absolute; top: 10px; right: 12px; background: var(--accent); color: #fff; border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 800; }
 .seg { display: flex; gap: 6px; flex-wrap: wrap; }
 .seg button {

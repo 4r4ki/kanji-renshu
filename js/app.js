@@ -439,8 +439,8 @@ function choose(keys, n) {
 function buildKeys(mode) {
   const n = SAVE.settings.count;
   if (mode === 'weak') return shuffle(Object.keys(SAVE.weak)).slice(0, n);
-  if (mode === 'mix') {
-    const types = level() === 3
+  if (mode === 'mix' || mode.startsWith('cat:')) {
+    const types = mode.startsWith('cat:') ? CAT_MAP.get(mode.slice(4))[5] : level() === 3
       ? ['kaki', 'kaki', 'yomi', 'nandoku', 'okuri', 'goji', 'kousei', 'douon', 'yoji', 'kakijun', 'imi', 'taigi']
       : ['yomi', 'kaki', 'kaki', 'yomi', 'imi', 'kakijun', 'yoji', 'taigi', 'douon', 'okuri', 'kousei'];
     const used = new Set();
@@ -555,7 +555,7 @@ class StrokePlayer {
 // ───────── 画面切りかえ ─────────
 const app = $('#app');
 const state = { quiz: null, player: null, cleanup: null };
-function setBack(show) { $('#backBtn').hidden = !show; }
+function setBack(show) { $('#backBtn').hidden = !show; $('header.top').hidden = !show; }
 $('#backBtn').onclick = () => { if (history.length > 1) history.back(); else location.hash = '#/'; };
 function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 function route() {
@@ -573,52 +573,51 @@ function route() {
 window.addEventListener('hashchange', route);
 
 // ───────── ホーム ─────────
-const MENU = [
-  ['dict', '辞', '#e2574c', '漢字じてん', '読み・意味・熟語・書き順アニメ'],
-  ['practice', '筆', '#2f7dd1', '書き順れんしゅう', '指やペンでなぞって書き順チェック'],
-  ['yomi', '読', '#e58a22', '読みクイズ', '熟語・送りがなの読み'],
-  ['kaki', '書', '#2e9d5b', '書き取りクイズ', 'カタカナを漢字に'],
-  ['nandoku', '難', '#7a3e9d', '難読・特別な読み', '境内・建立・名残 など'],
-  ['okuri', '送', '#c2410c', '送りがな', '承る？ 承わる？'],
-  ['goji', '誤', '#b91c1c', '誤字訂正', '文の中のまちがった漢字をさがす'],
-  ['kousei', '構', '#0f766e', '熟語の構成', '増加・損得・読書…どの組み立て？'],
-  ['imi', '意', '#8a5cc7', '意味クイズ', '熟語の意味をえらぶ'],
-  ['kakijun', '画', '#d6453b', '書き順・画数クイズ', '赤い画は何画目？'],
-  ['yoji', '四', '#1d9aa5', '四字熟語', '□をうめる・意味から選ぶ'],
-  ['taigi', '対', '#b0752a', '対義語・類義語', '反対・似た意味のことば'],
-  ['douon', '同', '#5b6dd1', '同音異義語・同訓異字', '対象・対照・対称 など'],
-  ['mix', '総', '#2d2a26', 'ミックステスト', 'ぜんぶの問題をまぜて出題（難関中心のときは難問多め）'],
+// 分野ごとにまとめて出題する
+const CATS = [
+  ['read', '読', '#e58a22', '読み', '熟語の読み・難読語', ['yomi', 'yomi', 'nandoku']],
+  ['write', '書', '#2e9d5b', '書き', '書き取り・送りがな・誤字訂正', ['kaki', 'kaki', 'kaki', 'okuri', 'goji']],
+  ['word', '語', '#8a5cc7', 'ことば', '意味・四字熟語・対義語・同音異義語・熟語の構成', ['imi', 'yoji', 'taigi', 'douon', 'kousei']],
+  ['stroke', '画', '#d6453b', '書き順・画数', '赤い画は何画目？ 総画数は？', ['kakijun']],
 ];
+const CAT_MAP = new Map(CATS.map(c => [c[0], c]));
 function renderHome() {
   setBack(false);
-  const learned = Object.keys(SAVE.kanji).filter(c => BY_CHAR.has(c)).length;
   const t = SAVE.total, rate = t.c + t.w ? Math.round((t.c / (t.c + t.w)) * 100) : 0;
   const weakN = Object.keys(SAVE.weak).length;
   const st = SAVE.settings;
   const seg = (name, opts) => `<div class="seg" data-set="${name}">${opts.map(([v, l]) => `<button data-v="${v}" class="${String(st[name]) === String(v) ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  const lvName = { 1: '★ 基本', 2: '★★ 標準', 3: '★★★ 難関中心' }[st.level];
   app.innerHTML = `
     <div class="hero">
       <div class="big">漢字<span>れんしゅう</span></div>
-      <p>中学入試によく出る漢字 ${KANJI.length}字・熟語 ${WORDS.length}語・四字熟語 ${YOJI.length}語・難読語 ${NANDOKU.length}語</p>
+      <p>${t.c + t.w ? `これまで ${t.c + t.w}問・正答率 ${rate}%` : '中学入試によく出る漢字をまとめて練習しよう'}</p>
     </div>
-    <div class="stats">
-      <div class="stat"><b>${learned}</b><small>学習した漢字</small></div>
-      <div class="stat"><b>${rate}%</b><small>正答率（${t.c + t.w}問）</small></div>
-      <div class="stat"><b>${weakN}</b><small>にがて</small></div>
-    </div>
+    <button class="startbtn" data-m="mix">
+      <b>きょうの${st.count}問をはじめる</b>
+      <small>読み・書き・ことば・書き順をまぜて出題（${lvName}）</small>
+    </button>
+    ${weakN ? `<button class="weakbtn" data-m="weak"><b>にがて復習</b><span class="badge">${weakN}問</span><small>まちがえた問題をもう一度</small></button>` : ''}
+    <h3>分野をえらんで練習</h3>
     <div class="menu">
-      ${MENU.map(([id, ic, col, name, sub]) => `<button data-m="${id}"><span class="ic" style="background:${col}">${ic}</span><b>${name}</b><small>${sub}</small></button>`).join('')}
-      <button data-m="weak" class="wide" ${weakN ? '' : 'disabled style="opacity:.5"'}><span class="ic" style="background:#d6453b">苦</span><b>にがて復習</b><small>${weakN ? `まちがえた問題 ${weakN}問をもう一度。2回続けて正解すると消えます` : 'まちがえた問題がここにたまります'}</small>${weakN ? `<span class="badge">${weakN}</span>` : ''}</button>
+      ${CATS.map(([id, ic, col, name, sub]) => `<button data-m="cat:${id}"><span class="ic" style="background:${col}">${ic}</span><b>${name}</b><small>${sub}</small></button>`).join('')}
     </div>
-    <div class="card" style="margin-top:14px">
-      <h2>せってい</h2>
-      <div class="setrow"><span>出題レベル</span>${seg('level', [[1, '★ 基本'], [2, '★★ 標準まで'], [3, '★★★ 難関中心']])}</div>
+    <h3>調べる・書いて覚える</h3>
+    <div class="menu">
+      <button data-m="dict"><span class="ic" style="background:#e2574c">辞</span><b>漢字じてん</b><small>読み・意味・熟語・書き順</small></button>
+      <button data-m="practice"><span class="ic" style="background:#2f7dd1">筆</span><b>なぞり練習</b><small>指でなぞって書き順チェック</small></button>
+    </div>
+    <details class="card settings" style="margin-top:14px">
+      <summary>せってい（${lvName}・${st.count}問）</summary>
+      <div class="setrow"><span>レベル</span>${seg('level', [[1, '★ 基本'], [2, '★★ 標準'], [3, '★★★ 難関中心']])}</div>
       <div class="setrow"><span>問題数</span>${seg('count', [[5, '5問'], [10, '10問'], [20, '20問']])}</div>
-      <div class="setrow"><span>書き取りの答え方</span>${seg('answer', [['choice', 'えらぶ'], ['write', '書いて自己採点']])}</div>
-      <div class="muted">「難関中心」は全範囲から、難しい問題ほど優先して出します。レベルは中学入試での難しさの目安です（基本 ${KANJI.filter(e => e.lv === 1).length}字・標準 ${KANJI.filter(e => e.lv === 2).length}字・発展 ${KANJI.filter(e => e.lv === 3).length}字）。</div>
+      <div class="setrow"><span>書き取り</span>${seg('answer', [['choice', 'えらぶ'], ['write', '書いて自己採点']])}</div>
+      <div class="muted">「難関中心」は全範囲から、難しい問題を多めに出します。</div>
       <div style="margin-top:10px"><button class="btn small" id="resetBtn">記録をリセット</button></div>
-    </div>`;
-  $$('.menu button').forEach(b => b.onclick = () => {
+    </details>`;
+  if (state.settingsOpen) $('.settings').open = true;
+  $('.settings').ontoggle = ev => { state.settingsOpen = ev.target.open; };
+  $$('[data-m]').forEach(b => b.onclick = () => {
     const m = b.dataset.m;
     if (m === 'dict') return go('#/dict');
     if (m === 'practice') return go('#/practice');
@@ -947,7 +946,8 @@ function startQuiz(mode) {
   go('#/quiz');
 }
 function modeTitle(mode) {
-  if (mode === 'mix') return level() === 3 ? 'ミックステスト（難関）' : 'ミックステスト';
+  if (mode === 'mix') return `きょうの${SAVE.settings.count}問`;
+  if (mode.startsWith('cat:')) return `${CAT_MAP.get(mode.slice(4))[3]}の練習`;
   if (mode === 'weak') return 'にがて復習';
   if (mode.startsWith('one:')) return `「${mode.slice(4)}」のクイズ`;
   return TYPE_LABEL[mode] + 'クイズ';

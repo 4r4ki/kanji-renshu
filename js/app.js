@@ -14,7 +14,7 @@ const LV_LABEL = { 1: '基本', 2: '標準', 3: '発展・難関' };
 
 // ───────── 保存データ ─────────
 const STORE_KEY = 'kanji-renshu-v1';
-let SAVE = { stats: {}, kanji: {}, weak: {}, total: { c: 0, w: 0 }, settings: { level: 3, count: 10, answer: 'choice', guide: true } };
+let SAVE = { stats: {}, kanji: {}, weak: {}, total: { c: 0, w: 0 }, settings: { level: 3, range: 'focus', count: 10, answer: 'choice', guide: true } };
 try {
   const raw = localStorage.getItem(STORE_KEY);
   if (raw) {
@@ -95,8 +95,17 @@ function kanaForm(x) {
   return x.chars.map((c, i) => (isKanji(c) ? hira2kata(x.segs[i]) : c)).join('');
 }
 const level = () => SAVE.settings.level;
-const poolKanji = () => KANJI.filter(e => e.lv <= level());
-const poolWords = () => WORDS.filter(x => x.lv <= level());
+// 「頻出・要注意だけ」のときは、入試によく出る・まちがえやすい問題（js/focus.js）にしぼる
+const focusOnly = () => SAVE.settings.range !== 'all';
+// （しぼると問題が少なくなりすぎるときは、そのレベルの全問題から出す）
+function focusPool(list, focus) {
+  if (!focusOnly()) return list;
+  const f = list.filter(focus);
+  return f.length >= 10 ? f : list;
+}
+const poolKanji = () => focusPool(KANJI.filter(e => e.lv <= level()), e => e.k in FOCUS_KANJI);
+const poolWords = () => focusPool(WORDS.filter(x => x.lv <= level()), x => x.w in FOCUS_WORDS);
+const noteHTML = t => (t ? `<div class="note">⚠ ${esc(t)}</div>` : '');
 
 // ───────── まちがいの選択肢づくり ─────────
 const DAKU_PAIRS = 'かがきぎくぐけげこごさざしじすずせぜそぞただちぢつづてでとどはばひびふぶへべほぼ';
@@ -207,7 +216,7 @@ function sentenceHTML(s, inner) {
 }
 function wordExplain(x) {
   return `<div class="ans">${esc(x.w)}<span class="muted">（${esc(x.read)}）</span></div>
-    <div class="exp">${esc(x.m)}</div>${kanjiChips(x.chars)}`;
+    <div class="exp">${esc(x.m)}</div>${noteHTML(FOCUS_WORDS[x.w])}${kanjiChips(x.chars)}`;
 }
 function kanjiChips(chars) {
   const ks = [...new Set(chars.filter(isKanji))];
@@ -261,7 +270,7 @@ const MAKERS = {
       const prompt = `<div class="qtext">赤いところは何画目に書くかな？</div>${kanjiSVG(id, { cls: 'qsvg', highlight: i - 1 })}`;
       return {
         prompt, choices: choices.map(v => `${v}画目`), answer,
-        explain: `<div class="ans">${esc(id)}　${i}画目<span class="muted">（全部で${n}画）</span></div>${kanjiSVG(id, { numbers: true, highlight: i - 1 })}${kanjiChips([id])}`,
+        explain: `<div class="ans">${esc(id)}　${i}画目<span class="muted">（全部で${n}画）</span></div>${noteHTML(FOCUS_KANJI[id])}${kanjiSVG(id, { numbers: true, highlight: i - 1 })}${kanjiChips([id])}`,
         kanji: [id], label: `${id}の${i}画目`,
       };
     }
@@ -269,7 +278,7 @@ const MAKERS = {
     const prompt = `<div class="qtext">この漢字の総画数は？</div><div class="qbig" style="font-size:96px">${esc(id)}</div>`;
     return {
       prompt, choices: choices.map(v => `${v}画`), answer,
-      explain: `<div class="ans">${esc(id)}　${n}画</div><div class="exp">${esc(e.m)}</div>${kanjiSVG(id, { numbers: true })}${kanjiChips([id])}`,
+      explain: `<div class="ans">${esc(id)}　${n}画</div><div class="exp">${esc(e.m)}</div>${noteHTML(FOCUS_KANJI[id])}${kanjiSVG(id, { numbers: true })}${kanjiChips([id])}`,
       kanji: [id], label: `${id}の画数`,
     };
   },
@@ -593,6 +602,7 @@ function renderHome() {
   const st = SAVE.settings;
   const seg = (name, opts) => `<div class="seg" data-set="${name}">${opts.map(([v, l]) => `<button data-v="${v}" class="${String(st[name]) === String(v) ? 'on' : ''}">${l}</button>`).join('')}</div>`;
   const lvName = { 1: '★ 基本', 2: '★★ 標準', 3: '★★★ 難関中心' }[st.level];
+  const rangeName = st.range === 'all' ? 'すべて' : '頻出・要注意';
   app.innerHTML = `
     <div class="hero">
       <div class="big">漢字<span>れんしゅう</span></div>
@@ -600,7 +610,7 @@ function renderHome() {
     </div>
     <button class="startbtn" data-m="mix">
       <b>きょうの${st.count}問をはじめる</b>
-      <small>読み・書き・ことば・書き順をまぜて出題（${lvName}）</small>
+      <small>読み・書き・ことば・書き順をまぜて出題（${rangeName}・${lvName}）</small>
     </button>
     ${weakN ? `<button class="weakbtn" data-m="weak"><b>にがて復習</b><span class="badge">${weakN}問</span><small>まちがえた問題をもう一度</small></button>` : ''}
     <h3>分野をえらんで練習</h3>
@@ -613,11 +623,12 @@ function renderHome() {
       <button data-m="practice"><span class="ic" style="background:#2f7dd1">筆</span><b>なぞり練習</b><small>指でなぞって書き順チェック</small></button>
     </div>
     <details class="card settings" style="margin-top:14px">
-      <summary>せってい（${lvName}・${st.count}問）</summary>
+      <summary>せってい（${rangeName}・${lvName}・${st.count}問）</summary>
+      <div class="setrow"><span>出題</span>${seg('range', [['focus', '頻出・要注意だけ'], ['all', 'すべて']])}</div>
       <div class="setrow"><span>レベル</span>${seg('level', [[1, '★ 基本'], [2, '★★ 標準'], [3, '★★★ 難関中心']])}</div>
       <div class="setrow"><span>問題数</span>${seg('count', [[5, '5問'], [10, '10問'], [20, '20問']])}</div>
       <div class="setrow"><span>書き取り</span>${seg('answer', [['choice', 'えらぶ'], ['write', '書いて自己採点']])}</div>
-      <div class="muted">「難関中心」は全範囲から、難しい問題を多めに出します。</div>
+      <div class="muted">「頻出・要注意だけ」は、入試によく出る・まちがえやすい問題にしぼって出します。「難関中心」は難しい問題を多めに出します。</div>
       <div style="margin-top:10px"><button class="btn small" id="resetBtn">記録をリセット</button></div>
     </details>`;
   if (state.settingsOpen) $('.settings').open = true;
@@ -714,6 +725,7 @@ function renderKanji(c) {
             <dt>訓読み</dt><dd>${kun}</dd>
             <dt>意味</dt><dd>${esc(e.m)}</dd>
           </dl>
+          ${noteHTML(FOCUS_KANJI[c])}
           ${nita.length ? `<h3>形の似た漢字に注意</h3>${kanjiChips(nita)}` : ''}
           <div class="pbtns" style="justify-content:flex-start;margin-top:14px">
             <a class="btn small pri" href="#/practice/${encodeURIComponent(c)}" style="text-decoration:none">✍ なぞって練習</a>
@@ -727,7 +739,7 @@ function renderKanji(c) {
       <ul class="words">
         ${e.w.map(([w, r, m, s]) => {
           const x = WORD_MAP.get(w);
-          return `<li><span class="w">${esc(w)}</span><span class="r">${esc(x.read)}</span><div class="m">${esc(m)}</div>${s ? `<div class="ex">例）${sentenceHTML(s, `<b>${esc(w)}</b>`)}</div>` : ''}</li>`;
+          return `<li><span class="w">${esc(w)}</span><span class="r">${esc(x.read)}</span>${w in FOCUS_WORDS ? '<span class="tag">要注意</span>' : ''}<div class="m">${esc(m)}</div>${noteHTML(FOCUS_WORDS[w])}${s ? `<div class="ex">例）${sentenceHTML(s, `<b>${esc(w)}</b>`)}</div>` : ''}</li>`;
         }).join('')}
       </ul>
     </div>
